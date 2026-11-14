@@ -642,9 +642,33 @@
     }
   }
 
+  // Tabbladicoon: de schil van het plakje groeit met de klok mee terwijl de fase vordert.
+  // Staat de timer nog aan het begin van een fase, dan het gewone icoon met hele schil.
+  const icoon = document.querySelector('link[rel="icon"]');
+  let icoonProcent = null;
+
+  function plakjeIcoon(procent) {
+    const pit = [[32, 19.6, 0], [42.4, 25.6, 60], [42.4, 38.4, -60], [32, 44.4, 0], [21.6, 38.4, 60], [21.6, 25.6, -60]]
+      .map(([x, y, r]) => `<ellipse cx="${x}" cy="${y}" rx="1.5" ry="1.1" transform="rotate(${r} ${x} ${y})"/>`).join('');
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">` +
+      `<rect width="64" height="64" rx="14" fill="#eaf6fc"/>` +
+      `<circle cx="32" cy="32" r="17.45" fill="none" stroke="#d3ecbc" stroke-width="4.1"/>` +
+      `<circle cx="32" cy="32" r="17.45" fill="none" stroke="#2f6b22" stroke-width="4.1" pathLength="100" stroke-dasharray="${procent} 100" transform="rotate(-90 32 32)"/>` +
+      `<g transform="rotate(-14 32 32)"><circle cx="32" cy="32" r="15.4" fill="#eef8e2"/><circle cx="32" cy="32" r="9.2" fill="#d3ecbc"/>` +
+      `<g fill="#b9d79f">${pit}</g></g></svg>`;
+  }
+
+  function zetIcoon(s) {
+    const procent = !eindtijd && s >= DUUR[fase] ? null : Math.floor(100 * (1 - s / DUUR[fase]));
+    if (procent === icoonProcent) return;
+    icoonProcent = procent;
+    icoon.href = procent === null ? 'icon.svg' : 'data:image/svg+xml,' + encodeURIComponent(plakjeIcoon(procent));
+  }
+
   function teken() {
     const s = over();
     syncKomkommer(s, !!eindtijd);
+    zetIcoon(s);
     const tijd = formatteer(s * TEMPO);
     [...tijd].forEach((ch, i) => {
       const vakje = els.time.children[i];
