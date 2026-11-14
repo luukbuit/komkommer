@@ -890,10 +890,32 @@
 
   // Als het tabblad terugkomt uit de achtergrond, meteen bijwerken.
   document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    kijkVoorNieuweVersie();
     if (!eindtijd) return;
     tik();
     houdSchermAan();
   });
+
+  // Vanaf het beginscherm van een iPhone komt de app terug uit het geheugen, zonder herlaadknop,
+  // en blijft zo op een oude versie hangen. Bij terugkomen kijken we daarom of de pagina op de
+  // server veranderd is, en herladen we zodra de timer stilstaat (herladen zet het geluid op slot).
+  const paginaTekst = (cache) => fetch(location.pathname, { cache }).then(r => r.ok ? r.text() : null).catch(() => null);
+  let geladenTekst = null;
+  let laatstGekeken = Date.now();
+  let nieuweVersie = false;
+  paginaTekst('force-cache').then(t => { geladenTekst = t; });
+
+  async function kijkVoorNieuweVersie() {
+    if (!nieuweVersie && geladenTekst && Date.now() - laatstGekeken > 60e3) {
+      laatstGekeken = Date.now();
+      // 'no-cache' vraagt de server of er iets nieuws is en ververst meteen de cache voor het herladen.
+      const t = await paginaTekst('no-cache');
+      if (t && t !== geladenTekst) nieuweVersie = true;
+    }
+    if (nieuweVersie && !eindtijd && !document.hidden) location.reload();
+  }
+  window.addEventListener('pageshow', (e) => { if (e.persisted) kijkVoorNieuweVersie(); });
 
   els.sound.checked = opslagLezen('komkommer-sound', true);
   els.auto.checked = opslagLezen('komkommer-auto', false);
