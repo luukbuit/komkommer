@@ -806,13 +806,13 @@
     schermslot = null;
   }
 
-  // Systeemmelding, alleen als de pagina op de achtergrond staat; wie kijkt, ziet het al.
+  // Systeemmelding, alleen als je niet naar de timer kijkt: ander tabblad, andere app of ander venster.
   // Android en iPhone tonen een melding alleen via een service worker; de rest kan het ook zonder.
   const KAN_MELDEN = 'Notification' in window;
   if (KAN_MELDEN && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
   async function systeemmelding(was) {
-    if (!document.hidden || Notification.permission !== 'granted') return;
+    if (document.hasFocus() || Notification.permission !== 'granted') return;
     const opties = {
       body: was === 'werk' ? 'Break time!' : 'Back to work.',
       icon: 'android-chrome-192x192.png',
