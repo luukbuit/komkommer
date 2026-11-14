@@ -168,6 +168,7 @@
     padding: 10px 16px 16px;
   }
   .schakel { display: inline-flex; cursor: pointer; }
+  .schakel[hidden] { display: none; }
   .knop {
     display: grid;
     place-items: center;
@@ -273,6 +274,10 @@
     <button type="button" class="sluit" id="iosmelding-sluit" aria-label="Close message">×</button>
   </div>
   <div class="melding" id="geluidmelding" role="status" hidden>Click or tap anywhere to turn the sound back on.</div>
+  <div class="melding" id="blokmelding" role="status" hidden>
+    Notifications are blocked for this site. Allow them in your browser's site settings.
+    <button type="button" class="sluit" id="blokmelding-sluit" aria-label="Close message">×</button>
+  </div>
 
   <main>
     <div class="illustration" aria-hidden="true">
@@ -359,6 +364,16 @@
       </span>
       <span class="sr-only">Sound</span>
     </label>
+    <label class="schakel" id="notify-schakel" hidden>
+      <input type="checkbox" id="notify" class="sr-only">
+      <span class="knop">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
+          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+        </svg>
+      </span>
+      <span class="sr-only">Notifications</span>
+    </label>
     <label class="schakel">
       <input type="checkbox" id="auto" class="sr-only">
       <span class="knop">
@@ -383,13 +398,14 @@
   const els = {
     time: $('time'),
     start: $('start'), reset: $('reset'),
-    sound: $('sound'), auto: $('auto')
+    sound: $('sound'), notify: $('notify'), auto: $('auto')
   };
 
   let fase = 'werk';
   let resterend = DUUR.werk;   // seconden, als de timer stilstaat
   let eindtijd = null;         // ms-tijdstempel, als de timer loopt
   let tikker = null;
+  let wekker = null;
   let audio = null;
 
   function opslagLezen(sleutel, standaard) {
@@ -672,6 +688,10 @@
     knop('Pause');
     clearInterval(tikker);
     tikker = setInterval(tik, 250);
+    // Op een tabblad op de achtergrond tikt de interval soms maar eens per minuut;
+    // een losse wekker op de eindtijd laat het alarm toch op tijd afgaan.
+    clearTimeout(wekker);
+    wekker = setTimeout(tik, Math.max(0, eindtijd - Date.now()));
     houdSchermAan();
     teken();
   }
@@ -680,6 +700,7 @@
     if (eindtijd) resterend = Math.max(0, over());
     eindtijd = null;
     clearInterval(tikker);
+    clearTimeout(wekker);
     document.body.classList.remove('running');
     laatSchermLos();
     knop(resterend < DUUR[fase] ? 'Resume' : 'Start');
@@ -696,6 +717,7 @@
     const was = fase;
     eindtijd = null;
     clearInterval(tikker);
+    clearTimeout(wekker);
     if (was === 'werk') syncKomkommer(0, true);
     alarm(was);
     zetFase(was === 'werk' ? 'pauze' : 'werk');
@@ -784,8 +806,28 @@
     schermslot = null;
   }
 
+  // Systeemmelding, alleen als de pagina op de achtergrond staat; wie kijkt, ziet het al.
+  // Android en iPhone tonen een melding alleen via een service worker; de rest kan het ook zonder.
+  const KAN_MELDEN = 'Notification' in window;
+  if (KAN_MELDEN && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+  async function systeemmelding(was) {
+    if (!document.hidden || Notification.permission !== 'granted') return;
+    const opties = {
+      body: was === 'werk' ? 'Break time!' : 'Back to work.',
+      icon: 'android-chrome-192x192.png',
+      tag: 'komkommer'
+    };
+    try {
+      const sw = await navigator.serviceWorker?.getRegistration();
+      if (sw) return await sw.showNotification('Komkommer', opties);
+    } catch {}
+    try { new Notification('Komkommer', opties); } catch {}
+  }
+
   function alarm(was) {
     if (els.sound.checked) belletje(was);
+    if (els.notify.checked) systeemmelding(was);
   }
 
   els.start.addEventListener('click', () => (eindtijd ? stop() : start()));
@@ -798,6 +840,20 @@
   }));
 
   ['sound', 'auto'].forEach(k => els[k].addEventListener('change', () => opslagSchrijven('komkommer-' + k, els[k].checked)));
+
+  // Bij aanzetten vraagt de browser één keer om toestemming; wie weigert, moet het zelf in de instellingen terugzetten.
+  els.notify.addEventListener('change', async () => {
+    $('blokmelding').hidden = true;
+    if (els.notify.checked && Notification.permission !== 'granted') {
+      const antwoord = await Notification.requestPermission();
+      if (antwoord !== 'granted') {
+        els.notify.checked = false;
+        $('blokmelding').hidden = false;
+      }
+    }
+    opslagSchrijven('komkommer-notify', els.notify.checked);
+  });
+  $('blokmelding-sluit').addEventListener('click', () => { $('blokmelding').hidden = true; });
 
   // Spatiebalk start en pauzeert.
   document.addEventListener('keydown', (e) => {
@@ -816,6 +872,9 @@
 
   els.sound.checked = opslagLezen('komkommer-sound', true);
   els.auto.checked = opslagLezen('komkommer-auto', false);
+  // Zonder meldingen (zoals Safari op de iPhone buiten het beginscherm) blijft de knop weg.
+  $('notify-schakel').hidden = !KAN_MELDEN;
+  els.notify.checked = KAN_MELDEN && Notification.permission === 'granted' && opslagLezen('komkommer-notify', false);
   // Op een iPhone (elke browser daar is Safari onder de motorkap) legt iOS de pagina
   // op de achtergrond stil; dat zeggen we er bovenaan eerlijk bij.
   const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
