@@ -816,7 +816,8 @@
     const opties = {
       body: was === 'werk' ? 'Break time!' : 'Back to work.',
       icon: 'android-chrome-192x192.png',
-      tag: 'komkommer'
+      tag: 'komkommer',
+      renotify: true    // met dezelfde tag anders stil vervangen, zonder pop-up
     };
     try {
       const sw = await navigator.serviceWorker?.getRegistration();
